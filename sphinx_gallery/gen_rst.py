@@ -70,7 +70,11 @@ if matplotlib_backend != 'agg':
     raise ValueError(mpl_backend_msg.format(matplotlib_backend))
 
 import matplotlib.pyplot as plt
-from docutils.core import publish_string
+import docutils
+from docutils.nodes import GenericNodeVisitor
+from docutils.parsers.rst import Parser as rstparser
+from docutils.utils import new_document
+from docutils.frontend import OptionParser
 
 from . import glr_path_static
 from .backreferences import write_backreferences, _thumbnail_div
@@ -179,25 +183,45 @@ def extract_thumbnail_number(text):
     return thumbnail_number
 
 
+class docstringVisitor(GenericNodeVisitor):
+
+    paragraphs = []
+    title = None
+
+    def visit_paragraph(self, node):
+        self.paragraphs.append(node.astext())
+
+    def visit_title(self, node):
+        self.title = node.astext()
+
+    def default_visit(self, node):
+        pass
+
+
 def extract_intro(filename):
     """ Extract the first paragraph of module-level docstring. max:95 char"""
 
     docstring, _ = get_docstring_and_rest(filename)
 
-    docstring = publish_string(docstring, writer_name='xml')
-    if not re.search("<title>(.+)</title>", docstring.decode('utf-8')):
+    parser = rstparser()
+    document = new_document(filename, settings=OptionParser(
+        components=(rstparser,)).get_default_values())
+
+    parser.parse(docstring, document)
+
+    visitor = docstringVisitor(document)
+    document.walk(visitor)
+
+    if not visitor.title:
         raise ValueError(
             "Example docstring should have a header for the example title "
             "and preferentially a paragraph explaining what the example is about. "
             "Please check the example file:\n {}\n".format(filename))
 
-    first_paragraph = re.search("<paragraph>(.+?)</paragraph>",
-                                docstring.decode('utf-8'),
-                                flags=re.DOTALL)
-    if first_paragraph is None:
+    if not visitor.paragraphs:
         return None
     else:
-        first_paragraph = re.sub("\n", " ", first_paragraph.group(1))
+        first_paragraph = re.sub("\n", " ", visitor.paragraphs[0])
         return (first_paragraph[:95] + '...'
                 if len(first_paragraph) > 95 else first_paragraph)
 
