@@ -70,6 +70,7 @@ if matplotlib_backend != 'agg':
     raise ValueError(mpl_backend_msg.format(matplotlib_backend))
 
 import matplotlib.pyplot as plt
+from docutils.core import publish_string
 
 from . import glr_path_static
 from .backreferences import write_backreferences, _thumbnail_div
@@ -183,19 +184,22 @@ def extract_intro(filename):
 
     docstring, _ = get_docstring_and_rest(filename)
 
-    # lstrip is just in case docstring has a '\n\n' at the beginning
-    paragraphs = docstring.lstrip().split('\n\n')
-    if len(paragraphs) > 1:
-        first_paragraph = re.sub('\n', ' ', paragraphs[1])
-        first_paragraph = (first_paragraph[:95] + '...'
-                           if len(first_paragraph) > 95 else first_paragraph)
-    else:
+    docstring = publish_string(docstring, writer_name='xml')
+    if not re.search("<title>(.+)</title>", docstring.decode('utf-8')):
         raise ValueError(
             "Example docstring should have a header for the example title "
-            "and at least a paragraph explaining what the example is about. "
+            "and preferentially a paragraph explaining what the example is about. "
             "Please check the example file:\n {}\n".format(filename))
 
-    return first_paragraph
+    first_paragraph = re.search("<paragraph>(.+?)</paragraph>",
+                                docstring.decode('utf-8'),
+                                flags=re.DOTALL)
+    if first_paragraph is None:
+        return None
+    else:
+        first_paragraph = re.sub("\n", " ", first_paragraph.group(1))
+        return (first_paragraph[:95] + '...'
+                if len(first_paragraph) > 95 else first_paragraph)
 
 
 def get_md5sum(src_file):
